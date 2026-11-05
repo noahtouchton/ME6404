@@ -1,0 +1,11 @@
+# MATLAB autosave / editor backups
+*.asv
+*.m~
+
+# MATLAB data files (solutions are regenerated with find_path / find_min_time)
+*.mat
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
