@@ -1,19 +1,21 @@
-%% run_sim.m - Plot and animate the maneuver saved in crane_solution.mat (no solving)
-% Make the file with find_path.m (and optionally speed it up with find_min_time.m).
+%% run_sim.m - Plot and animate the saved maneuver (no solving)
+% Shows results/solution.mat, the last thing lab_tune.m solved. Set in_file to show another
+% (e.g. one of the .mat files saved next to each upload in uploads/).
+% Drawn in the model frame: the pin is on the +X axis.
 clear; clc; close all;
 here = fileparts(mfilename('fullpath'));
-addpath(fullfile(here, 'lib'), fullfile(here, 'model', 'generated'));
-in_file = fullfile(here, 'results', 'crane_solution.mat');
+addpath(fullfile(here, 'theory'), fullfile(here, 'engine'), fullfile(here, 'generated'));
+in_file = fullfile(here, 'results', 'solution.mat');
 
 fps     = 50;     % animation frame rate (also the plot sampling rate)
 t_coast = 5;      % seconds of U = 0 after the maneuver, to watch for residual swing
 
 %% 1. Load
-if ~isfile(in_file), error('No %s yet: run find_path.m first.', in_file); end
+if ~isfile(in_file), error('No %s yet: run lab_tune.m first.', in_file); end
 S   = load(in_file);
 cfg = S.cfg;  params = crane_params(cfg);  t_f = S.t_f;
-fprintf('Loaded %s\n  made by %s on %s | t_f = %.2f s | W_t = %.3g | loops = %+d\n', ...
-    in_file, S.source, S.created, t_f, cfg.W_t, cfg.kdir);
+fprintf('Loaded %s\n  solved %s | t_f = %.2f s | W_t = %.3g | passes behind pin = %d\n', ...
+    in_file, S.created, t_f, cfg.W_t, cfg.passes);
 
 %% 2. Evaluate the optimal maneuver
 t_man = linspace(0, t_f, round(t_f*fps));
@@ -21,9 +23,8 @@ T = crane_trajectory(S, t_man);
 M = crane_metrics(T, cfg);
 
 %% 3. Coast: freeze the actuators (U = 0) and integrate the real nonlinear EOM forward
-% hamiltonian_ode with all costates = 0 gives U* = 0, so its first 11 rows are f(X, U=0).
 t_c     = t_f + (0 : 1/fps : t_coast);
-coast_f = @(t, X) first11(hamiltonian_ode(t, [X; zeros(11,1)], params));
+coast_f = @(t, X) crane_dynamics(X, zeros(3, 1), params);
 [~, Xc] = ode45(coast_f, t_c, T.X(:, end), odeset('RelTol', 1e-10, 'AbsTol', 1e-12));
 Xc  = Xc(2:end, :).';                       % ode45 returns rows; drop the repeated t_f point
 t_c = t_c(2:end);
@@ -45,7 +46,7 @@ x_t   = X_traj(1, :);  phi_t = X_traj(4, :);  psi_t = X_traj(5, :);
 dx_t  = X_traj(6, :);  dl_t  = X_traj(7, :);  dth_t = X_traj(8, :);
 eta_t = X_traj(11, :);
 
-xmax = cfg.xmax;  R_p = cfg.R_p;  r_p = cfg.r_p;  c_clr = cfg.c_clr;  z_top = cfg.z_top;
+xmax = cfg.xmax;  R_p = cfg.pin_x;  r_p = cfg.r_p;  c_clr = cfg.c_clr;  z_top = cfg.z_top;
 H_tower = cfg.lmax + 0.15;                  % jib height above the floor (drawing only)
 lift  = [0; 0; H_tower];
 Jib_I = [T.G.Jib, Gc.Jib] + lift;
@@ -56,14 +57,14 @@ Q_I   = Qp + lift;
 fprintf('\n--- Solution checks ---\n');
 fprintf('final time t_f          : %.2f s\n', t_f);
 fprintf('H spread (max-min)      : %.2e   (should be ~0)\n', M.H_spread);
-fprintf('max x / xmax            : %.3f   (must be <= 1)\n', M.x_ratio);
+fprintf('trolley range           : %.0f - %.0f mm  (limits %.0f - %.0f)\n', 1000*M.x_range, 1000*[cfg.xmin cfg.xmax]);
 fprintf('max |v| / vmax (x,l,th) : %.3f %.3f %.3f\n', M.v_ratio);
 fprintf('max |U| / Umax (x,l,th) : %.3f %.3f %.3f\n', M.u_ratio);
 fprintf('min payload-pin dist    : %.1f mm (clearance %.1f mm)\n', 1000*M.d_pin_min, 1000*(r_p + c_clr));
 fprintf('min cable-pin dist      : %.1f mm (pin radius %.1f mm)\n', 1000*M.d_cable_min, 1000*r_p);
 fprintf('max payload reach - xmax: %+.1f mm  (> 0 means it swung past the trolley limit)\n', 1000*M.reach_over);
-fprintf('windings eta(tf)/2pi    : %.4f\n', M.windings);
-fprintf('swing at t_f phi, psi   : %.3f, %.3f deg\n', M.end_swing);
+fprintf('swept around pin eta(tf): %.1f deg  (target %.1f)\n', M.sweep_deg, rad2deg(cfg.sweep));
+fprintf('swing at t_f phi, psi   : %.3f, %.3f deg\n', rad2deg(X_traj(4:5, k_end)));
 if M.admissible, fprintf('ADMISSIBLE: all limits respected, pin never touched\n');
 else,            fprintf('NOT ADMISSIBLE: %s\n', strjoin(M.why, ', ')); end
 
@@ -88,7 +89,7 @@ plot(t_sim, rad2deg(phi_t), 'r-', 'LineWidth', 2, 'DisplayName', '\phi (radial s
 plot(t_sim, rad2deg(psi_t), 'm-', 'LineWidth', 2, 'DisplayName', '\psi (tangential swing)');
 yline(0, 'k:', 'HandleVisibility', 'off');
 xlabel('Time (s)'); ylabel('Angle (deg)');
-title(sprintf('Swing Angles (at t_f: \\phi=%.2f^\\circ, \\psi=%.2f^\\circ)', M.end_swing));
+title(sprintf('Swing Angles (max \\phi=%.2f^\\circ, \\psi=%.2f^\\circ)', M.swing_max_deg));
 legend('Location', 'best');
 
 subplot(2,2,3); hold on; grid on;
@@ -125,7 +126,8 @@ plot(P_I(1,:)*1000, P_I(2,:)*1000, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Troll
 plot(Qp(1,:)*1000,  Qp(2,:)*1000,  'r-', 'LineWidth', 1.5, 'DisplayName', 'Payload');
 out = r_rad > xmax;                                   % samples where only swing explains the reach
 plot(Qp(1,out)*1000, Qp(2,out)*1000, 'm.', 'MarkerSize', 10, 'DisplayName', 'Beyond x_{max}');
-plot(Qp(1,1)*1000, Qp(2,1)*1000, 'ko', 'MarkerFaceColor', 'k', 'DisplayName', 'Start / end');
+plot(Qp(1,1)*1000, Qp(2,1)*1000, 'go', 'MarkerFaceColor', 'g', 'DisplayName', 'Start');
+plot(Qp(1,k_end)*1000, Qp(2,k_end)*1000, 'ks', 'MarkerFaceColor', 'k', 'DisplayName', 'Finish');
 allX = [Qp(1,:), P_I(1,:), R_p + r_p + c_clr];  allY = [Qp(2,:), P_I(2,:)];
 xlim([min(allX) - 0.05, max(allX) + 0.05]*1000);
 ylim([min(allY) - 0.05, max(allY) + 0.05]*1000);
@@ -144,10 +146,10 @@ xlabel('Time (s)'); ylabel('H');
 title(sprintf('Hamiltonian (spread %.1e, should be flat)', M.H_spread));
 
 subplot(2,2,4); hold on; grid on;
-plot(t_sim, eta_t/(2*pi), 'LineWidth', 1.8);
-yline(cfg.kdir, 'k--', 'LineWidth', 1.2);
-xlabel('Time (s)'); ylabel('\eta / 2\pi');
-title('Windings Around the Pin');
+plot(t_sim, rad2deg(eta_t), 'LineWidth', 1.8);
+yline(rad2deg(cfg.sweep), 'k--', 'LineWidth', 1.2);
+xlabel('Time (s)'); ylabel('\eta (deg)');
+title('Angle Swept Around the Pin');
 
 mark_coast(gcf, t_f);
 
@@ -186,18 +188,13 @@ for k = 1:Nt
     set(h_payload, 'XData', Q_I(1,k)*1000,        'YData', Q_I(2,k)*1000,        'ZData', Q_I(3,k)*1000);
     set(h_trail,   'XData', Q_I(1,1:k)*1000,      'YData', Q_I(2,1:k)*1000,      'ZData', Q_I(3,1:k)*1000);
     if k > k_end, phase = 'COAST (U = 0)'; else, phase = 'maneuver'; end
-    set(title_handle, 'String', sprintf('%s  t = %.2f s (t_f = %.2f) | reach %.1f mm | pin dist %.1f mm | windings %.2f', ...
-        phase, t_sim(k), t_f, r_rad(k)*1000, d_pin(k)*1000, eta_t(k)/(2*pi)));
+    set(title_handle, 'String', sprintf('%s  t = %.2f s (t_f = %.2f) | reach %.1f mm | pin dist %.1f mm | swept %.0f deg', ...
+        phase, t_sim(k), t_f, r_rad(k)*1000, d_pin(k)*1000, rad2deg(eta_t(k))));
     drawnow;
     pause(1/fps);
 end
 
 %% Local functions
-function d = first11(F)
-% Keep the 11 state derivatives of the 22-row Hamiltonian ODE.
-    d = F(1:11);
-end
-
 function mark_coast(fig, t_f)
 % Draw a vertical line at t_f on every time-axis plot in the figure.
     for ax = findobj(fig, 'Type', 'axes')'
