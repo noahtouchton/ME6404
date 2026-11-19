@@ -1,0 +1,4 @@
+file,loop,duration_s,reach_past_xmax_mm,pin_margin_mm,swing_left_mm,admissible
+is_classic,IS classic (EI),19.05,44.1963627971473,10.2976238915421,7.75435892248548,1
+is_cancel,IS cancel (ZV),13.3,41.1659337291111,10.1723017418626,0.0629020575259449,1
+is_robust,IS cancel robust (ZVD),18.85,35.7512927259795,10.4226539411638,0.918403559372466,1

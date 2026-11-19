@@ -23,11 +23,11 @@ final_project/
 ├── compare_methods.m    replays every saved loop, as designed and with the wrong cable length
 │                        -> results/comparison.csv, comparison.mat, results/figures/*.png
 ├── run_sim.m            one saved loop: checks, plots, 5 s coast, 3D animation (no solving)
-├── lab5_trajectories.m  input-shaping test files for the Lab 5 tower crane -> lab5/
+├── trajectories.m       the shaped loops as files the crane can run -> trajectories/
 ├── model/
 │   ├── EOM.m            symbolic dynamics, costates and optimal input -> writes model/generated/
 │   └── generated/       written by EOM.m (don't edit by hand)
-├── lab5/                Lab 5 upload files (.xlsx), summary.csv, predicted.png
+├── trajectories/        the crane upload files (.xlsx) and summary.csv
 └── results/             saved loops, comparison table and figures (old/: earlier versions)
 ```
 
@@ -103,40 +103,30 @@ What it shows:
 
 Figures: `results/figures/paths.png`, `swing.png`, `robustness.png`, `actuators.png`.
 
-### Lab 5 test trajectories
+### Running the shaped loops on the crane
 
-`lab5_trajectories.m` writes continuous-velocity upload files for the Lab 5 tower crane
-(`lab5/*.xlsx`: first sheet, headers `time_s, trolley_pct, slew_pct, hoist_pct` in row 1, one row
-every 0.05 s, velocity in % of the Table IV maximum, ending at zero) that test whether input
-shaping removes the swing on the real crane. Each row is the average velocity over its step, so the
-positions add up exactly. Each test starts from the Lab 5 start pose (trolley 550 mm, slew 195°,
-cable 1350 mm) and makes one move.
+`trajectories.m` writes each saved input-shaped loop as a file the tower crane can run
+(`trajectories/<name>.xlsx`: first sheet, headers `time_s, trolley_pct, slew_pct, hoist_pct`, one
+row every 0.05 s, velocity in % of the maximum, ending at zero). Each row is the average velocity
+over its step, so the crane ends up exactly where the design does. Each file is replayed on the
+full model as a check (`trajectories/summary.csv`, and the projected payload paths in
+`trajectories/projected_paths.png`):
 
-The lab crane is a double pendulum (0.357 kg hook on 1.35 m of cable, 0.050 kg payload 0.381 m
-below it), with swing periods of about 2.38 s and 1.13 s, so the shapers target both modes
-(`ZV12`: ZV for each mode, convolved). All times sit on the 0.05 s grid. Predictions come from a
-linear double-pendulum model replaying each file:
+| File | Loop | Duration (s) | Past xmax (mm) | Pin margin (mm) | Swing left (mm) |
+|---|---|---:|---:|---:|---:|
+| is_classic | IS classic (EI) | 19.05 | 44.2 | 10.3 | 7.8 |
+| is_cancel | IS cancel (ZV) | 13.30 | 41.2 | 10.2 | 0.1 |
+| is_robust | IS cancel robust (ZVD) | 18.85 | 35.8 | 10.4 | 0.9 |
 
-| File | Shaper | Speed | Move | Predicted swing left (peak, mm) | Predicted translation penalty (s) |
-|---|---|---:|---|---:|---:|
-| trolley_unshaped | none | 100 % | 300 mm out | 38.8 | 7.14 |
-| trolley_ZV_mode1 | ZV, mode 1 | 100 % | 300 mm out | 1.3 | 0.18 |
-| trolley_ZV_both | ZV12 | 100 % | 300 mm out | 0.4 | 0.06 |
-| slew_unshaped | none | 100 % | +40° | 223.9 | 47.05 |
-| slew_ZV_both | ZV12 | 100 % | +40° | 32.2 | 6.16 |
-| slew_ZV_both_half | ZV12 | 50 % | +40° | 7.2 | 1.67 |
+Before running them:
 
-Things to know before running them:
-
-- Run `trolley_unshaped` first, read the two swing periods off the recorded data, put them in
-  `T_meas` at the top of the script, and regenerate. The shapers are only as good as those periods.
-- The slew tests turn away from the finish (195° to 235°) to stay clear of the T obstacle; check
-  that side is clear. `slew_unshaped` swings the payload about ±22 cm on the model.
-- Shaping the slew can't remove the outward throw from slewing itself (it grows with speed
-  squared), which is why the full-speed shaped slew still leaves about 32 mm and half speed about
-  7 mm.
-- The predictions assume the crane holds each row's velocity for its 0.05 s step; check the
-  interface's "File formats & limits" panel.
+- The velocities are relative. Start the crane at rest with the trolley at 0.70 m and 1.00 m of
+  cable, the jib pointing at the pin (0.90 m out along that line). The loop slews to one side
+  first (±27.7° for is_cancel, ±45.5° for is_robust, ±61.7° for is_classic), so leave room both ways.
+- The designs assume a 1.00 m pendulum. If the real payload swings with another period T, set
+  `l0 = g*(T/(2*pi))^2` in `crane.task`, rerun `solve_is`, then `trajectories`.
+- To run the optimal-control loops on the crane too, add `'oc_fixed'` and `'oc_min_time'` to
+  `loops` in `trajectories.m`.
 
 ### Usage
 
@@ -147,4 +137,4 @@ Run from `final_project/` in MATLAB (Symbolic Math Toolbox needed only for `mode
 3. `solve_is` (about 7 minutes): classic, cancelling and robust shaped loops.
 4. `compare_methods`: the table and figures above.
 5. `run_sim`: look at one loop (set `solution` at the top).
-6. `lab5_trajectories`: the Lab 5 test files.
+6. `trajectories`: the shaped loops as files the crane can run.
