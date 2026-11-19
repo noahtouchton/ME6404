@@ -44,6 +44,7 @@ inputs are the three drive accelerations:
 | `dynamics.m` | `x_dot = dynamics(x, u)`, which evaluates `A(x) + B(x)*u` (g = 9.81). |
 | `obstacle_sdf.m` | Signed distance from the payload sphere (radius `R_pay`) to a `'box'` or `'cylinder'` obstacle. Positive means clear. Shared by the optimizer and the sim. |
 | `optimize.m` | The optimizer. Set N, the limits, the start and end poses, and the obstacles at the top, then run it. Writes `trajectory.mat`. |
+| `optimizeBVP.m` | The same move solved indirectly (PMP + `bvp4c`). The wall is a smooth barrier made of a chain of circles, the guess goes through waypoints, and it runs an adaptive continuation over `[w_t, k_wall, k_obs]`. Writes the same `trajectory.mat` format, about 15 s per solve. |
 | `sim_trajectory.m` | Loads `trajectory.mat` and runs the trajectory through `ode45`. See the next section. |
 
 ### `sim_trajectory.m`
