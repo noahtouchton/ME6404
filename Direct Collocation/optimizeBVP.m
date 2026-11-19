@@ -177,6 +177,9 @@ out_file = fullfile(fileparts(mfilename('fullpath')), 'trajectory.mat');
 save(out_file, '-struct', 'traj');
 fprintf('Saved trajectory to %s\n', out_file);
 
+% Inputs as % of max acceleration, one row per mesh point (overwritten every run)
+export_xlsx(fullfile(fileparts(mfilename('fullpath')), 'inputs_bvp.xlsx'), t_grid, u_opt, u_max);
+
 %% BVP Functions
 
 function dYd_tau = bvp_ode(tau, Y, tf, ode_rhs_fn, p_stage)

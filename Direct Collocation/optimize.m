@@ -158,6 +158,9 @@ out_file = fullfile(fileparts(mfilename('fullpath')), 'trajectory.mat');
 save(out_file, '-struct', 'traj');
 fprintf('Saved trajectory to %s\n', out_file);
 
+% Inputs as % of max acceleration, one row per node (overwritten every run)
+export_xlsx(fullfile(fileparts(mfilename('fullpath')), 'inputs_collocation.xlsx'), t_grid, u_opt, u_ub);
+
 function J = cost_fun(Z, idx_x, idx_u, idx_tf, N, u_ub, w_t)
     x = Z(idx_x);
     u = Z(idx_u);

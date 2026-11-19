@@ -45,6 +45,7 @@ inputs are the three drive accelerations:
 | `obstacle_sdf.m` | Signed distance from the payload sphere (radius `R_pay`) to a `'box'` or `'cylinder'` obstacle. Positive means clear. Shared by the optimizer and the sim. |
 | `optimize.m` | The optimizer. Set N, the limits, the start and end poses, and the obstacles at the top, then run it. Writes `trajectory.mat`. |
 | `optimizeBVP.m` | The same move solved indirectly (PMP + `bvp4c`). The wall is a smooth barrier made of a chain of circles, the guess goes through waypoints, and it runs an adaptive continuation over `[w_t, k_wall, k_obs]`. Writes the same `trajectory.mat` format, about 15 s per solve. |
+| `export_xlsx.m` | Called by both optimizers. It writes every time step's inputs as a percentage of max acceleration, under the header `Continuous, time_s, trolley_pct, slew_pct, hoist_pct`. `optimize.m` writes `inputs_collocation.xlsx` and `optimizeBVP.m` writes `inputs_bvp.xlsx`; each run overwrites its own file. |
 | `sim_trajectory.m` | Loads `trajectory.mat` and runs the trajectory through `ode45`. See the next section. |
 
 ### `sim_trajectory.m`
