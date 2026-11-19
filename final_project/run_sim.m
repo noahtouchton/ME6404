@@ -1,33 +1,34 @@
-%% run_sim.m - Plot and animate the maneuver saved in crane_solution.mat (no solving)
-% Make the file with find_path.m (and optionally speed it up with find_min_time.m).
+%% run_sim.m - Plot and animate a saved maneuver (no solving)
+% Shows any solution in results/: optimal control (solve_oc.m) or input shaping (solve_is.m).
 clear; clc; close all;
 here = fileparts(mfilename('fullpath'));
-addpath(fullfile(here, 'lib'), fullfile(here, 'model', 'generated'));
-in_file = fullfile(here, 'results', 'crane_solution.mat');
+addpath(here, fullfile(here, 'model', 'generated'));
 
-fps     = 50;     % animation frame rate (also the plot sampling rate)
-t_coast = 5;      % seconds of U = 0 after the maneuver, to watch for residual swing
+solution = 'oc_min_time.mat';      % or 'oc_fixed.mat', 'is_classic.mat', 'is_cancel.mat', 'is_robust.mat'
+fps      = 50;     % animation frame rate (also the plot sampling rate)
+t_coast  = 5;      % seconds of U = 0 after the maneuver, to watch for residual swing
+animate  = true;   % false: plots only
 
 %% 1. Load
-if ~isfile(in_file), error('No %s yet: run find_path.m first.', in_file); end
+in_file = crane.file(solution);
+if ~isfile(in_file), error('No %s yet: run solve_oc.m or solve_is.m first.', in_file); end
 S   = load(in_file);
-cfg = S.cfg;  params = crane_params(cfg);  t_f = S.t_f;
-fprintf('Loaded %s\n  made by %s on %s | t_f = %.2f s | W_t = %.3g | loops = %+d\n', ...
-    in_file, S.source, S.created, t_f, cfg.W_t, cfg.kdir);
+cfg = S.cfg;  t_f = S.t_f;
+is_optimal = strcmp(S.kind, 'optimal');
+fprintf('Loaded %s\n  made by %s on %s | t_f = %.2f s | loops = %+d\n', in_file, S.source, S.created, t_f, cfg.kdir);
+if is_optimal, fprintf('  optimal control, time price W_t = %.3g\n', cfg.W_t);
+else,          fprintf('  input-shaped command, simulated on the full nonlinear model\n'); end
 
-%% 2. Evaluate the optimal maneuver
+%% 2. Evaluate the maneuver
 t_man = linspace(0, t_f, round(t_f*fps));
-T = crane_trajectory(S, t_man);
-M = crane_metrics(T, cfg);
+T = crane.trajectory(S, t_man);
+M = crane.metrics(T, cfg);
 
-%% 3. Coast: freeze the actuators (U = 0) and integrate the real nonlinear EOM forward
-% hamiltonian_ode with all costates = 0 gives U* = 0, so its first 11 rows are f(X, U=0).
-t_c     = t_f + (0 : 1/fps : t_coast);
-coast_f = @(t, X) first11(hamiltonian_ode(t, [X; zeros(11,1)], params));
-[~, Xc] = ode45(coast_f, t_c, T.X(:, end), odeset('RelTol', 1e-10, 'AbsTol', 1e-12));
-Xc  = Xc(2:end, :).';                       % ode45 returns rows; drop the repeated t_f point
-t_c = t_c(2:end);
-Gc  = crane_geometry(Xc, cfg);
+%% 3. Coast: freeze the actuators (U = 0) and integrate the full nonlinear model forward
+stopped = struct('U', @(t) zeros(3, numel(t)), 'breaks', [], 'pwc', false);
+Tc  = crane.simulate(stopped, t_f + (0 : 1/fps : t_coast), cfg, T.X(:, end));
+Xc  = Tc.X(:, 2:end);  t_c = Tc.t(2:end);   % drop the repeated t_f point
+Gc  = structfun(@(v) v(:, 2:end), Tc.G, 'UniformOutput', false);
 
 % Maneuver + coast, in the variable names the plots use
 k_end  = numel(t_man);                      % index of the last maneuver sample (t = t_f)
@@ -55,7 +56,7 @@ Q_I   = Qp + lift;
 %% 4. Checks
 fprintf('\n--- Solution checks ---\n');
 fprintf('final time t_f          : %.2f s\n', t_f);
-fprintf('H spread (max-min)      : %.2e   (should be ~0)\n', M.H_spread);
+if is_optimal, fprintf('H spread (max-min)      : %.2e   (should be ~0)\n', M.H_spread); end
 fprintf('max x / xmax            : %.3f   (must be <= 1)\n', M.x_ratio);
 fprintf('max |v| / vmax (x,l,th) : %.3f %.3f %.3f\n', M.v_ratio);
 fprintf('max |U| / Umax (x,l,th) : %.3f %.3f %.3f\n', M.u_ratio);
@@ -64,6 +65,7 @@ fprintf('min cable-pin dist      : %.1f mm (pin radius %.1f mm)\n', 1000*M.d_cab
 fprintf('max payload reach - xmax: %+.1f mm  (> 0 means it swung past the trolley limit)\n', 1000*M.reach_over);
 fprintf('windings eta(tf)/2pi    : %.4f\n', M.windings);
 fprintf('swing at t_f phi, psi   : %.3f, %.3f deg\n', M.end_swing);
+fprintf('leftover swing at t_f   : %.1f mm (radial %.1f, tangential %.1f)\n', 1000*M.residual, 1000*M.residual_parts);
 if M.admissible, fprintf('ADMISSIBLE: all limits respected, pin never touched\n');
 else,            fprintf('NOT ADMISSIBLE: %s\n', strjoin(M.why, ', ')); end
 
@@ -73,7 +75,7 @@ fprintf('max |phi|, |psi|        : %.2e, %.2e deg\n', rad2deg(max(abs(phi_t(coas
 fprintf('max payload drift       : %.3f mm from its position at t_f\n', 1000*max(vecnorm(Qp(:, coast) - Qp(:, k_end))));
 
 %% 5. Telemetry (mm and deg)
-figure('Name', 'Hardware-Constrained Optimal Control', 'Color', 'w', 'Position', [50, 50, 1150, 750]);
+figure('Name', sprintf('Telemetry: %s', S.source), 'Color', 'w', 'Position', [50, 50, 1150, 750]);
 
 subplot(2,2,1); hold on; grid on;
 plot(t_sim, x_t*1000,   'b-', 'LineWidth', 2, 'DisplayName', 'Trolley x(t)');
@@ -109,12 +111,12 @@ yline([72.6, -72.6], 'b:', 'HandleVisibility', 'off');
 yline([30, -30],     'g:', 'HandleVisibility', 'off');
 yline([32.4, -32.4], 'c:', 'HandleVisibility', 'off');
 xlabel('Time (s)'); ylabel('Accel (mm/s^2 or deg/s^2)');
-title('Optimal Accelerations'); legend('Location', 'best');
+title('Commanded Accelerations'); legend('Location', 'best');
 
 mark_coast(gcf, t_f);
 
 %% 6. Obstacle & optimality checks
-figure('Name', 'Pin Loop & Optimality Checks', 'Color', 'w', 'Position', [100, 80, 1150, 750]);
+figure('Name', sprintf('Pin Loop Checks: %s', S.source), 'Color', 'w', 'Position', [100, 80, 1150, 750]);
 ang = linspace(0, 2*pi, 200);
 
 subplot(2,2,1); hold on; grid on; axis equal;
@@ -139,9 +141,17 @@ yline(r_p*1000, 'k:', 'LineWidth', 1.5, 'DisplayName', 'Pin radius');
 xlabel('Time (s)'); ylabel('Distance (mm)'); title('Pin Clearance'); legend('Location', 'best');
 
 subplot(2,2,3); hold on; grid on;
-plot(t_sim, H_t, 'LineWidth', 1.8);
-xlabel('Time (s)'); ylabel('H');
-title(sprintf('Hamiltonian (spread %.1e, should be flat)', M.H_spread));
+if is_optimal
+    plot(t_sim, H_t, 'LineWidth', 1.8);
+    xlabel('Time (s)'); ylabel('H');
+    title(sprintf('Hamiltonian (spread %.1e, should be flat)', M.H_spread));
+else
+    % No Hamiltonian for a shaped command: show the swing it builds up and then cancels
+    offset = vecnorm(Qp(1:2,:) - [T.G.P(1:2,:), Gc.P(1:2,:)]);   % payload offset from the trolley
+    plot(t_sim, offset*1000, 'LineWidth', 1.8);
+    xlabel('Time (s)'); ylabel('Offset (mm)');
+    title(sprintf('Payload Swing Offset (left at t_f: %.1f mm)', 1000*M.residual));
+end
 
 subplot(2,2,4); hold on; grid on;
 plot(t_sim, eta_t/(2*pi), 'LineWidth', 1.8);
@@ -152,6 +162,7 @@ title('Windings Around the Pin');
 mark_coast(gcf, t_f);
 
 %% 7. 3D animation (mm)
+if ~animate, return; end
 fig_anim = figure('Name', '3D Tower Crane Simulation', 'Color', 'w', 'Position', [200, 100, 900, 700]);
 ax_3d = axes('Parent', fig_anim);
 hold(ax_3d, 'on'); grid(ax_3d, 'on'); axis(ax_3d, 'equal');
@@ -193,11 +204,6 @@ for k = 1:Nt
 end
 
 %% Local functions
-function d = first11(F)
-% Keep the 11 state derivatives of the 22-row Hamiltonian ODE.
-    d = F(1:11);
-end
-
 function mark_coast(fig, t_f)
 % Draw a vertical line at t_f on every time-axis plot in the figure.
     for ax = findobj(fig, 'Type', 'axes')'

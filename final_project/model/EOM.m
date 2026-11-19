@@ -69,7 +69,6 @@ syms k_v real   % velocity-wall weight: must stay >> W_t or speed beats the velo
 
 r_Qx = x + l*sin(phi)*cos(psi);
 r_Qy = l*sin(psi);
-r_rad = sqrt(r_Qx^2 + r_Qy^2);
 r_z = -l*cos(phi)*cos(psi);
 
 Q = [cos(th) -sin(th); sin(th) cos(th)]* [r_Qx; r_Qy];
@@ -103,7 +102,8 @@ B_dl  = k_v * (dl / dlmax)^8;
 B_dth = k_v * (dth / dthmax)^8;
 L_barrier = 0.5 * (B_x + B_l + B_dx + B_dl + B_dth);
 
-L_obs = W_obs * ((r_p + c_clr)^2/d2)^6; % W_obs at pin radius, grows fast inside of it. 
+L_obs = W_obs * ((r_p + c_clr)^2/d2)^6; % W_obs at pin radius, grows fast inside of it.
+
 %L_control = 0.5 * (r1*(ddx/ddxmax)^2 + r2*(ddl/ddlmax)^2 + r3*(ddth/ddthmax)^2);
 
 U_max = [ddxmax; ddlmax; ddthmax];
@@ -137,7 +137,7 @@ dX_dt_opt = subs(f, U, U_opt);
 dP_dt_opt = subs(dP_dt, U, U_opt);
 disp(dP_dt(end))     % λ̇_η: should print 0, since η appears nowhere in H
 % Export to a fast MATLAB function for bvp4c!
-params_sym = [g; r1; r2; r3; xmax; lmax; dxmax; dlmax; dthmax; ddxmax; ddlmax; ddthmax; pin_x; pin_y; r_p; c_clr; W_obs; k_x; W_t; k_v];   % 20 entries: order must match lib/crane_params.m
+params_sym = [g; r1; r2; r3; xmax; lmax; dxmax; dlmax; dthmax; ddxmax; ddlmax; ddthmax; pin_x; pin_y; r_p; c_clr; W_obs; k_x; W_t; k_v];   % 20 entries: order must match crane.params
 ode_22 = [dX_dt_opt; dP_dt_opt];
 L_control_opt = sum(r_vec .* (z .* tanh(z) - log(cosh(z))));   % φ(u*) written in terms of z
 H_opt = subs(L_cost - L_control, U, U_opt) + L_control_opt + dot(P, subs(f, U, U_opt));
@@ -149,5 +149,8 @@ matlabFunction(ode_22, 'File', fullfile(gen, 'hamiltonian_ode'),   'Vars', {t, [
 matlabFunction(U_opt,  'File', fullfile(gen, 'optimal_inputs'),    'Vars', {[X; P], params_sym});
 matlabFunction(H_opt,  'File', fullfile(gen, 'hamiltonian_value'), 'Vars', {[X; P], params_sym});
 matlabFunction(Qpos,   'File', fullfile(gen, 'payload_position'),  'Vars', {X, params_sym});
+% Plant for ANY input history U = [ddx; ddl; ddth] (input shaping, open-loop replays, coasting)
+matlabFunction(f,      'File', fullfile(gen, 'crane_dynamics'),    'Vars', {X, U, params_sym});
 addpath(gen); rehash                                     % make MATLAB see the new files
 disp(size(hamiltonian_ode(0, rand(22,1), rand(20,1))))   % should print 22 1
+disp(size(crane_dynamics(rand(11,1), rand(3,1), rand(20,1))))   % should print 11 1
