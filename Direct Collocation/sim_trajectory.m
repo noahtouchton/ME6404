@@ -149,9 +149,8 @@ function draw_obstacle_top(ob)
 c = [0.85 0.2 0.2];
 switch ob.type
     case 'box'
-        lo = ob.center(1:2) - ob.half(1:2);  w = 2*ob.half(1:2);
-        rectangle('Position', 1000*[lo.' w.'], 'FaceColor', [c 0.35], 'EdgeColor', c);
-        plot(NaN, NaN, 's', 'MarkerFaceColor', c, 'MarkerEdgeColor', c);   % legend proxy
+        V = box_vertices(ob);
+        fill(1000*V(1:4, 1), 1000*V(1:4, 2), c, 'FaceAlpha', 0.35, 'EdgeColor', c);
     case 'cylinder'
         a = linspace(0, 2*pi, 60);
         fill(1000*(ob.xy(1) + ob.R*cos(a)), 1000*(ob.xy(2) + ob.R*sin(a)), c, 'FaceAlpha', 0.35, 'EdgeColor', c);
@@ -163,9 +162,7 @@ function draw_obstacle_3d(ax, ob)
 c = [0.85 0.2 0.2];
 switch ob.type
     case 'box'
-        lo = ob.center - ob.half;  hi = ob.center + ob.half;
-        V = [lo(1) lo(2) lo(3); hi(1) lo(2) lo(3); hi(1) hi(2) lo(3); lo(1) hi(2) lo(3);
-             lo(1) lo(2) hi(3); hi(1) lo(2) hi(3); hi(1) hi(2) hi(3); lo(1) hi(2) hi(3)];
+        V = box_vertices(ob);
         F = [1 2 3 4; 5 6 7 8; 1 2 6 5; 2 3 7 6; 3 4 8 7; 4 1 5 8];
         patch(ax, 'Vertices', V, 'Faces', F, 'FaceColor', c, 'FaceAlpha', 0.35, 'EdgeColor', c);
     case 'cylinder'
@@ -176,4 +173,17 @@ switch ob.type
         fill3(ax, ob.xy(1) + ob.R*cos(a), ob.xy(2) + ob.R*sin(a), ob.z(2)*ones(size(a)), c, ...
               'FaceAlpha', 0.35, 'EdgeColor', c);
 end
+end
+
+function V = box_vertices(ob)
+% 8 x 3 corners of a box obstacle (bottom four, then top four), rotated by ob.yaw about Z.
+s = [-1 -1; 1 -1; 1 1; -1 1];
+xy = s .* ob.half(1:2).';
+if isfield(ob, 'yaw') && ~isempty(ob.yaw) && ob.yaw ~= 0
+    R = [cos(ob.yaw) -sin(ob.yaw); sin(ob.yaw) cos(ob.yaw)];
+    xy = (R * xy.').';
+end
+xy = xy + ob.center(1:2).';
+lo = ob.center(3) - ob.half(3);  hi = ob.center(3) + ob.half(3);
+V = [xy, lo*ones(4, 1); xy, hi*ones(4, 1)];
 end

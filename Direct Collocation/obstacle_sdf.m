@@ -4,8 +4,14 @@ function dist = obstacle_sdf(p, ob, R_pay)
 % Positive = clear, negative = penetrating. Shared by optimize.m and sim_trajectory.m.
 switch ob.type
     case 'box'
-        % Vector from box center to payload center, folded into positive octant
-        q = abs(p - ob.center) - ob.half;
+        % Vector from box center to payload center, in the box's frame (optional ob.yaw =
+        % rotation about Z, rad), folded into the positive octant
+        r = p - ob.center;
+        if isfield(ob, 'yaw') && ~isempty(ob.yaw) && ob.yaw ~= 0
+            c = cos(ob.yaw);  s = sin(ob.yaw);
+            r = [c*r(1) + s*r(2); -s*r(1) + c*r(2); r(3)];
+        end
+        q = abs(r) - ob.half;
     case 'cylinder'
         d_radial   = norm(p(1:2) - ob.xy) - ob.R;
         d_vertical = abs(p(3) - 0.5*(ob.z(1) + ob.z(2))) - 0.5*(ob.z(2) - ob.z(1));
